@@ -1,14 +1,15 @@
 .data
-n1:   .word 13
-k1:   .word 4
-n2:   .word 21
-k2:   .word 21
-n3:   .word 14
-k3:   .word 13
-msg1: .string "The number of bit changes to make "
-msg2: .string " and "
-msg3: .string " equal is: "
-endl: .string "\n"
+n1:      .word 13
+k1:      .word 4
+output1: .word 2
+n2:      .word 21
+k2:      .word 21
+output2: .word 0
+n3:      .word 14
+k3:      .word 13
+output3: .word -1
+str1:    .string "pass "
+str2:    .string "fail "
 
 .text
 main:
@@ -17,16 +18,21 @@ main:
 loop:
     lw a0, 0(s1)                    # a0 = n
     lw a1, 4(s1)                    # a1 = k
+    lw a2, 8(s1)                    # a2 = correct output
  
     addi sp, sp, -4                 
     sw ra, 0(sp)                    
     jal ra, bitChanges              # goto bitChanges function
     lw ra, 0(sp)
     addi sp, sp, 4
-    addi s1, s1, 8                  # move to the next test case
-    addi s0, s0, -1                 # test case counter--
-    bnez s0, loop                   # still got test case, stay in the loop 
-    j end                           # no more test case, end the program
+    jal ra, print_result            # goto print result
+    addi s1, s1, 12                 # move to the next test case
+    addi s0, s0, -1                 # case counter -1
+    bnez s0, loop                   
+    
+    #exit
+    li a7, 10               
+    ecall                     
 
 #bitChanges function
 bitChanges:
@@ -35,7 +41,7 @@ bitChanges:
     xor a0, t0, t1                   # a0 = n xor k
     addi sp, sp, -4
     sw ra, 0(sp)
-    jal ra, my_clz                   # goto my_clz function
+    jal ra, blclz                   # goto my_clz function
     lw ra, 0(sp)
     addi sp, sp, 4
     li t2, 0                         # init i = 0
@@ -63,66 +69,54 @@ shift:
     bne t2, t3, bitChanges_loop      # if(i < (32 - num)), stay in the loop
     mv a0, t4                        # else, let a0 = result
 bitChanges_end:
-    addi sp, sp, -4
-    sw ra, 0(sp)
-    jal ra, print                    # goto print
-    lw ra, 0(sp)
-    addi sp, sp, 4
     jr ra                            # return
-    
-    
+        
 #clz function
-my_clz:
-    li t2, 1                     # init t3 = 1U
-    li t3, 0                     # init count = 0
-    li t4, 31                    # init i = 31
-my_clz_loop:    
-    sll t5, t2, t4               # t5 = 1U << i
-    and t5, t5, a0               # t5 = (x & (1U << i))
-    bne t5, x0, clz_end          # if (t5 != 0), exit the loop
-    addi t3, t3, 1               # count++
-    addi t4, t4, -1              # --i
-    bge t4, zero, my_clz_loop    # if (i >= 0), stay in the loop
-clz_end:
-    mv a0, t3                    # a0 = count
-    jr ra                        # return
+blclz:
+    srli t2, a0, 1        # x >> 1
+    or a0, a0, t2         # x |= (x >> 1)
+    srli t2, a0, 2        # x >> 2 
+    or a0, a0, t2         # x |= (x >> 2)
+    srli t2, a0, 4        # x >> 4
+    or a0, a0, t2         # x |= (x >> 4)
+    srli t2, a0, 8        # x >> 8
+    or a0, a0, t2         # x |= (x >> 8)
+    srli t2, a0, 16       # x >> 16
+    or a0, a0, t2         # x |= (x >> 16)
     
+    srli t2, a0, 1        # x >> 1
+    li t4, 0x55555555
+    and t2, t2, t4        # t2 = ((x >> 1) & 0x55555555)
+    sub a0, a0, t2        # x = x - t2
+    srli t2, a0, 2        # x >> 2
+    li t4, 0x33333333
+    and t2, t2, t4        # t2 = ((x >> 2) & 0x33333333)
+    and t4, a0, t4        # t4 = x & 0x33333333
+    add a0, t2, t4        # x = t2 & t4
+    srli t2, a0, 4        # x >> 4
+    add t2, t2, a0        # t2 = (x >> 4) + x
+    li t4, 0x0f0f0f0f     
+    and a0, t2, t4        # x = t2 & 0x0f0f0f0f
+    srli t2, a0, 8        # x >> 8
+    add a0, a0, t2        # x += (x >> 8)
+    srli t2, a0, 16       # x >> 16
+    add a0, a0, t2        # x += (x >> 16)
+    andi a0, a0, 0x7F     # x & 0x7f
+    li t2, 32
+    sub a0, t2, a0        # a0 = 32 - (x & 0x7f)
+clz_end:
+    jr ra                 # return
 
-#print result
-print:
-    mv s4, a0                # store the result in s4
-
-    la a0, msg1              # print "The number of bit changes to make"
+# print result (pass or fail)
+print_result:
+    bne a0, a2, fail
+    la a0, str1                # print "pass"
     li a7, 4
     ecall
-
-    lw a0, 0(s1)             # print n
-    li a7, 1
-    ecall
-
-    la a0, msg2              # print "and"
+    j print_end
+fail:
+    la a0, str2                # print "fail"
     li a7, 4
     ecall
-
-    lw a0, 4(s1)             # print k
-    li a7, 1
-    ecall
-
-    la a0, msg3              # print "equal is:"
-    li a7, 4
-    ecall
-
-    mv a0, s4                # print the result
-    li a7, 1
-    ecall
-
-    la a0, endl              # print " \n "
-    li a7, 4
-    ecall
-
-    jr ra
-
-end:
-    li a7, 10                # system call number for exit
-    li a0, 0                 # return 0
-    ecall
+print_end:
+    jr ra                      # return
